@@ -1,8 +1,9 @@
+numpy>=1.18.5
 cvzone==1.5.6
 ultralytics
 hydra-core>=1.2.0
 matplotlib>=3.2.2
-numpy>=1.18.5
+
 
 Pillow>=7.1.2
 PyYAML>=5.3.1
@@ -13,4 +14,5 @@ torchvision>=0.8.1
 tqdm>=4.64.0
 filterpy==1.4.5
 scikit-image==0.19.3
-
+gunicorn
+lap==0.4.0
