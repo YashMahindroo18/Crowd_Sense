@@ -11,7 +11,8 @@ def func(video, mask):
         print("Error: Could not open video.")
         return 0, 0
 
-    model = YOLO("../Yolo_Weights/yolov8n.pt")
+    # Auto-downloads to ~/.yolo/models/ - works on Railway
+    model = YOLO("yolov8n.pt")
 
     classNames = ["person", "bicycle", "car", "motorbike", "aeroplane", "bus", "train", "truck", "boat",
                   "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
@@ -45,9 +46,12 @@ def func(video, mask):
             break
 
         imgregion = cv2.bitwise_and(img, mask)
-        imgGraphics = cv2.imread(r"D:\minor_project\graphics-1.png", cv2.IMREAD_UNCHANGED)
-        if imgGraphics is not None:
-            img = cvzone.overlayPNG(img, imgGraphics, (730, 260))
+        
+        # Graphics overlay removed for cloud deployment
+        # If needed, upload graphics-1.png to repo root and uncomment:
+        # imgGraphics = cv2.imread("graphics-1.png", cv2.IMREAD_UNCHANGED)
+        # if imgGraphics is not None:
+        #     img = cvzone.overlayPNG(img, imgGraphics, (730, 260))
 
         results = model(imgregion, stream=True)
         detections = np.empty((0, 5))
@@ -96,20 +100,21 @@ def func(video, mask):
         cv2.putText(img, str(len(totalCountUp)), (929, 345), cv2.FONT_HERSHEY_PLAIN, 5, (139, 195, 75), 7)
         cv2.putText(img, str(len(totalCountDown)), (1191, 345), cv2.FONT_HERSHEY_PLAIN, 5, (50, 50, 230), 7)
 
-        #cv2.imshow("Image", img)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
     cap.release()
     cv2.destroyAllWindows()
     return len(totalCountUp), len(totalCountDown)
 
 
 from flask import Flask, render_template, request, jsonify
-# from People_counter.My_version import func
 import os
+import tempfile
 
 app = Flask(__name__)
+
+# Use Railway's ephemeral storage
+UPLOAD_FOLDER = tempfile.gettempdir()
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 
 @app.route('/')
 def home():
@@ -123,21 +128,32 @@ def count_people():
     video = request.files['video']
     mask = request.files['mask']
     
-    # Save uploaded files
-    os.makedirs('static/uploads', exist_ok=True)
-
-    video_path = os.path.join('static/uploads', video.filename)
-    mask_path = os.path.join('static/uploads', mask.filename)
-    video.save(video_path)
-    mask.save(mask_path)
-
-    # Call the counting function
-    up, down = func(video_path, mask_path)
+    if video.filename == '' or mask.filename == '':
+        return jsonify({'error': 'Empty files'}), 400
     
-    return jsonify({'up': up, 'down': down})
+    try:
+        # Save to temp directory
+        video_path = os.path.join(app.config['UPLOAD_FOLDER'], video.filename)
+        mask_path = os.path.join(app.config['UPLOAD_FOLDER'], mask.filename)
+        video.save(video_path)
+        mask.save(mask_path)
+
+        # Call the counting function
+        up, down = func(video_path, mask_path)
+        
+        # Cleanup temp files
+        os.remove(video_path)
+        os.remove(mask_path)
+        
+        return jsonify({'up': up, 'down': down})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok'}), 200
 
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
